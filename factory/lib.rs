@@ -1,72 +1,103 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(feature = "std"), no_std, no_main)]
+#![allow(clippy::new_without_default)]
 
 #[ink::contract]
 mod factory {
-
-    /// Defines the storage of your contract.
-    /// Add new fields to the below struct in order
-    /// to add new static storage fields to your contract.
+    use crate::ensure;
+    use ink::env::{
+        call::{build_call, ExecutionInput, Selector},
+        DefaultEnvironment,
+    };
     #[ink(storage)]
     pub struct Factory {
-        /// Stores a single `bool` value on the storage.
-        value: bool,
+        /// Contract owner
+        owner: AccountId,
+        /// Token contract address
+        token_contract: AccountId,
+        /// Minting price. Caller must pay this price to mint one new token from Token contract
+        price: Balance,
+    }
+
+    /// The Factory error types.
+    #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub enum Error {
+        /// Returned if not enough balance to fulfill a request is available.
+        InsufficientBalance,
+        /// The call is not allowed if the caller is not the owner of the contract
+        NotOwner,
+        /// Returned if the token contract account is not set during the contract creation.
+        ContractNotSet,
+    }
+
+    pub type Result<T> = core::result::Result<T, Error>;
+
+    #[ink::trait_definition]
+    pub trait Minting {
+        /// Mint new tokens from Token contract
+        #[ink(message, payable)]
+        fn mint(&mut self, amount: Balance) -> Result<()>;
     }
 
     impl Factory {
-        /// Constructor that initializes the `bool` value to the given `init_value`.
         #[ink(constructor)]
-        pub fn new(init_value: bool) -> Self {
-            Self { value: init_value }
-        }
-
-        /// Constructor that initializes the `bool` value to `false`.
-        ///
-        /// Constructors can delegate to other constructors.
-        #[ink(constructor)]
-        pub fn default() -> Self {
-            Self::new(Default::default())
-        }
-
-        /// A message that can be called on instantiated contracts.
-        /// This one flips the value of the stored `bool` from `true`
-        /// to `false` and vice versa.
-        #[ink(message)]
-        pub fn flip(&mut self) {
-            self.value = !self.value;
-        }
-
-        /// Simply returns the current value of our `bool`.
-        #[ink(message)]
-        pub fn get(&self) -> bool {
-            self.value
+        pub fn new(contract_acc: AccountId) -> Self {
+            Self {
+                owner: Self::env().caller(),
+                token_contract: contract_acc,
+                price: 1,
+            }
         }
     }
 
-    /// Unit tests in Rust are normally defined within such a `#[cfg(test)]`
-    /// module and test functions are marked with a `#[test]` attribute.
-    /// The below code is technically just normal Rust code.
+    impl Minting for Factory {
+        #[ink(message, payable)]
+        fn mint(&mut self, amount: Balance) -> Result<()> {
+            let caller = self.env().caller();
+            ensure!(
+                self.token_contract != AccountId::from([0x0; 32]),
+                Error::ContractNotSet
+            );
+            ensure!(
+                self.price == self.env().transferred_value(),
+                Error::InsufficientBalance
+            );
+
+            let _mint_result = build_call::<DefaultEnvironment>()
+                .call(self.token_contract)
+                .gas_limit(5000000000)
+                .exec_input(
+                    ExecutionInput::new(Selector::new(ink::selector_bytes!("PSP34::mint")))
+                        .push_arg(caller)
+                        .push_arg(amount),
+                )
+                .returns::<()>()
+                .try_invoke();
+            ink::env::debug_println!("mint_result: {:?}", _mint_result);
+            Ok(())
+        }
+    }
+
+    /// Unit tests
     #[cfg(test)]
     mod tests {
-        /// Imports all the definitions from the outer scope so we can use them here.
         use super::*;
 
-        /// We test if the default constructor does its job.
+        /// Test a simple use case o.
         #[ink::test]
-        fn default_works() {
-            let factory = Factory::default();
-            assert_eq!(factory.get(), false);
+        fn contract_not_set_works() {
+            let mut factory = Factory::new([0x0; 32].into());
+            assert_eq!(factory.mint(50), Err(Error::ContractNotSet));
+            // ink::env::pay_with_call!(
         }
 
-        /// We test a simple use case of our contract.
         #[ink::test]
-        fn it_works() {
-            let mut factory = Factory::new(false);
-            assert_eq!(factory.get(), false);
-            factory.flip();
-            assert_eq!(factory.get(), true);
+        fn insufficient_balance_works() {
+            let mut factory = Factory::new([0x1; 32].into());
+            assert_eq!(factory.mint(50), Err(Error::InsufficientBalance));
+            // ink::env::pay_with_call!(
         }
     }
-
 
     /// This is how you'd write end-to-end (E2E) or integration tests for ink! contracts.
     ///
@@ -139,4 +170,16 @@ mod factory {
             Ok(())
         }
     }
+}
+
+/// Evaluate `$x:expr` and if not true return `Err($y:expr)`.
+///
+/// Used as `ensure!(expression_to_ensure, expression_to_return_on_false)`.
+#[macro_export]
+macro_rules! ensure {
+    ( $x:expr, $y:expr $(,)? ) => {{
+        if !$x {
+            return Err($y.into());
+        }
+    }};
 }
