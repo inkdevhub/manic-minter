@@ -995,6 +995,8 @@ version = "0.1.0"
 dependencies = [
  "ink",
  "ink_e2e",
+ "my_psp22",
+ "openbrush",
  "parity-scale-codec",
  "scale-info",
 ]

@@ -17,7 +17,7 @@ mod factory {
         /// Minting price. Caller must pay this price to mint one new token from Token contract
         price: Balance,
     }
-    
+
     /// The Factory error types.
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
@@ -27,7 +27,7 @@ mod factory {
         /// The call is not allowed if the caller is not the owner of the contract
         NotOwner,
         /// Returned if the token contract account is not set during the contract creation.
-        ContractNotSet
+        ContractNotSet,
     }
 
     pub type Result<T> = core::result::Result<T, Error>;
@@ -37,6 +37,12 @@ mod factory {
         /// Mint new tokens from Token contract
         #[ink(message, payable)]
         fn mint(&mut self, amount: Balance) -> Result<()>;
+
+        #[ink(message)]
+        fn set_price(&mut self, price: Balance) -> Result<()>;
+
+        #[ink(message)]
+        fn get_price(&self) -> Balance;
     }
 
     impl Factory {
@@ -69,12 +75,24 @@ mod factory {
                 .exec_input(
                     ExecutionInput::new(Selector::new(ink::selector_bytes!("PSP34::mint")))
                         .push_arg(caller)
-                        .push_arg(amount)
+                        .push_arg(amount),
                 )
                 .returns::<()>()
                 .try_invoke();
             ink::env::debug_println!("mint_result: {:?}", _mint_result);
             Ok(())
+        }
+
+        #[ink(message)]
+        fn set_price(&mut self, price: Balance) -> Result<()> {
+            ensure!(self.env().caller() == self.owner, Error::NotOwner);
+            self.price = price;
+            Ok(())
+        }
+
+        #[ink(message)]
+        fn get_price(&self) -> Balance {
+            self.price
         }
     }
 
@@ -82,25 +100,41 @@ mod factory {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use ink::env::test;
 
         /// Test error ContractNotSet.
         #[ink::test]
         fn contract_not_set_works() {
             let mut factory = Factory::new([0x0; 32].into());
-            assert_eq!(
-                factory.mint(50),
-                Err(Error::ContractNotSet)
-            );
+            assert_eq!(factory.mint(50), Err(Error::ContractNotSet));
         }
-        
+
         /// Test error InsufficientBalance.
         #[ink::test]
         fn insufficient_balance_works() {
             let mut factory = Factory::new([0x1; 32].into());
-            assert_eq!(
-                factory.mint(50),
-                Err(Error::InsufficientBalance)
-            );
+            assert_eq!(factory.mint(50), Err(Error::InsufficientBalance));
+        }
+
+        /// Test setting price
+        #[ink::test]
+        fn set_price_works() {
+            let accounts = default_accounts();
+            let mut factory = Factory::new([0x0; 32].into());
+            assert!(factory.set_price(100).is_ok());
+            assert_eq!(factory.get_price(), 100);
+
+            // Non owner fails to set price
+            set_sender(accounts.bob);
+            assert_eq!(factory.set_price(100), Err(Error::NotOwner));
+        }
+
+        fn default_accounts() -> test::DefaultAccounts<ink::env::DefaultEnvironment> {
+            test::default_accounts::<Environment>()
+        }
+
+        fn set_sender(sender: AccountId) {
+            ink::env::test::set_caller::<Environment>(sender);
         }
     }
 
@@ -111,66 +145,91 @@ mod factory {
     /// - Are running a Substrate node which contains `pallet-contracts` in the background
     #[cfg(all(test, feature = "e2e-tests"))]
     mod e2e_tests {
-        /// Imports all the definitions from the outer scope so we can use them here.
         use super::*;
-
-        /// A helper function used for calling contract messages.
+        use crate::factory::FactoryRef;
+        use ink::primitives::AccountId;
         use ink_e2e::build_message;
+        // use openbrush::contracts::psp22::psp22_external::PSP22;
+        use my_psp22::my_psp22::TokenRef;
+        use openbrush::contracts::ownable::ownable_external::Ownable;
 
-        /// The End-to-End test `Result` type.
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-        /// We test that we can upload and instantiate the contract using its default constructor.
-        #[ink_e2e::test]
-        async fn default_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-            // Given
-            let constructor = FactoryRef::default();
+        const AMOUNT: Balance = 100;
 
-            // When
-            let contract_account_id = client
-                .instantiate("factory", &ink_e2e::alice(), constructor, 0, None)
-                .await
-                .expect("instantiate failed")
-                .account_id;
+        fn get_alice_account_id() -> AccountId {
+            let alice = ink_e2e::alice::<ink_e2e::PolkadotConfig>();
+            let alice_account_id_32 = alice.account_id();
+            let alice_account_id = AccountId::try_from(alice_account_id_32.as_ref()).unwrap();
 
-            // Then
-            let get = build_message::<FactoryRef>(contract_account_id.clone())
-                .call(|factory| factory.get());
-            let get_result = client.call_dry_run(&ink_e2e::alice(), &get, 0, None).await;
-            assert!(matches!(get_result.return_value(), false));
-
-            Ok(())
+            alice_account_id
         }
 
-        /// We test that we can read and write a value from the on-chain contract contract.
-        #[ink_e2e::test]
-        async fn it_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-            // Given
-            let constructor = FactoryRef::new(false);
-            let contract_account_id = client
-                .instantiate("factory", &ink_e2e::bob(), constructor, 0, None)
+        #[ink_e2e::test(additional_contracts = "factory/Cargo.toml token/Cargo.toml")]
+        async fn e2e_minting_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
+            let initial_balance: Balance = 1_000_000;
+
+            // Instantiate Token contract
+            let token_constructor = TokenRef::new(initial_balance);
+            let alice_account_id = get_alice_account_id();
+
+            let token_account_id = client
+                .instantiate("my_psp22", &ink_e2e::alice(), token_constructor, 0, None)
                 .await
-                .expect("instantiate failed")
+                .expect("token instantiate failed")
                 .account_id;
 
-            let get = build_message::<FactoryRef>(contract_account_id.clone())
-                .call(|factory| factory.get());
-            let get_result = client.call_dry_run(&ink_e2e::bob(), &get, 0, None).await;
-            assert!(matches!(get_result.return_value(), false));
-
-            // When
-            let flip = build_message::<FactoryRef>(contract_account_id.clone())
-                .call(|factory| factory.flip());
-            let _flip_result = client
-                .call(&ink_e2e::bob(), flip, 0, None)
+            // Instantiate factory contract
+            let factory_constructor = FactoryRef::new(token_account_id);
+            let factory_account_id = client
+                .instantiate("factory", &ink_e2e::alice(), factory_constructor, 0, None)
                 .await
-                .expect("flip failed");
+                .expect("factory instantiate failed")
+                .account_id;
 
-            // Then
-            let get = build_message::<FactoryRef>(contract_account_id.clone())
-                .call(|factory| factory.get());
-            let get_result = client.call_dry_run(&ink_e2e::bob(), &get, 0, None).await;
-            assert!(matches!(get_result.return_value(), true));
+            // Set Factory contract to be the owner of Token contract
+            let change_owner = build_message::<TokenRef>(token_account_id.clone())
+                .call(|p| p.transfer_ownership(factory_account_id));
+            client
+                .call(&ink_e2e::alice(), change_owner, 0, None)
+                .await
+                .expect("calling `transfer_ownership` failed");
+
+            // Verify that Factory is the Token contract owner
+            let owner = build_message::<TokenRef>(token_account_id.clone()).call(|p| p.owner());
+            let owner_result = client
+                .call_dry_run(&ink_e2e::alice(), &owner, 0, None)
+                .await
+                .return_value();
+            assert_eq!(owner_result, factory_account_id);
+
+            // Contract owner sets price
+            let price_message = build_message::<FactoryRef>(factory_account_id.clone())
+                .call(|factory| factory.set_price(100));
+            client
+                .call(&ink_e2e::alice(), price_message, 0, None)
+                .await
+                .expect("calling `set_price` failed");
+
+            // Bob mints a token fails since no payment was made
+            let mint_message = build_message::<FactoryRef>(factory_account_id.clone())
+                .call(|factory| factory.mint(AMOUNT));
+            let failed_mint_result = client
+                .call_dry_run(&ink_e2e::bob(), &mint_message, 0, None)
+                .await
+                .return_value();
+            assert_eq!(failed_mint_result, Err(Error::InsufficientBalance));
+
+            // Bob mints a token
+            client
+                .call(&ink_e2e::bob(), mint_message, 100, None)
+                .await
+                .expect("calling `pink_mint` failed");
+
+            // Check contract balance
+            if let Ok(balance) = client.balance(factory_account_id).await {
+                assert_eq!(balance, 100);
+            }
 
             Ok(())
         }

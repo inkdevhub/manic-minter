@@ -1,6 +1,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(min_specialization)]
 
+pub use self::my_psp22::TokenRef;
+
 #[openbrush::contract]
 pub mod my_psp22 {
 
