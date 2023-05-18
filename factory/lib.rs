@@ -17,7 +17,7 @@ mod factory {
         /// Minting price. Caller must pay this price to mint one new token from Token contract
         price: Balance,
     }
-
+    
     /// The Factory error types.
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
@@ -27,7 +27,7 @@ mod factory {
         /// The call is not allowed if the caller is not the owner of the contract
         NotOwner,
         /// Returned if the token contract account is not set during the contract creation.
-        ContractNotSet,
+        ContractNotSet
     }
 
     pub type Result<T> = core::result::Result<T, Error>;
@@ -69,7 +69,7 @@ mod factory {
                 .exec_input(
                     ExecutionInput::new(Selector::new(ink::selector_bytes!("PSP34::mint")))
                         .push_arg(caller)
-                        .push_arg(amount),
+                        .push_arg(amount)
                 )
                 .returns::<()>()
                 .try_invoke();
@@ -83,19 +83,24 @@ mod factory {
     mod tests {
         use super::*;
 
-        /// Test a simple use case o.
+        /// Test error ContractNotSet.
         #[ink::test]
         fn contract_not_set_works() {
             let mut factory = Factory::new([0x0; 32].into());
-            assert_eq!(factory.mint(50), Err(Error::ContractNotSet));
-            // ink::env::pay_with_call!(
+            assert_eq!(
+                factory.mint(50),
+                Err(Error::ContractNotSet)
+            );
         }
-
+        
+        /// Test error InsufficientBalance.
         #[ink::test]
         fn insufficient_balance_works() {
             let mut factory = Factory::new([0x1; 32].into());
-            assert_eq!(factory.mint(50), Err(Error::InsufficientBalance));
-            // ink::env::pay_with_call!(
+            assert_eq!(
+                factory.mint(50),
+                Err(Error::InsufficientBalance)
+            );
         }
     }
 
