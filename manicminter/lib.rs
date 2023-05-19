@@ -183,7 +183,7 @@ mod manicminter {
                 .expect("token instantiate failed")
                 .account_id;
 
-            // Instantiate manic-minter contract
+            // Instantiate ManicMinter contract
             let manic_minter_constructor = ManicMinterRef::new(oxygen_account_id);
             let manic_minter_account_id = client
                 .instantiate(
@@ -194,7 +194,7 @@ mod manicminter {
                     None,
                 )
                 .await
-                .expect("manic-minter instantiate failed")
+                .expect("ManicMinter instantiate failed")
                 .account_id;
 
             // Set ManicMinter contract to be the owner of Oxygen contract
@@ -230,7 +230,7 @@ mod manicminter {
                 .return_value();
             assert_eq!(failed_mint_result, Err(Error::BadMintValue));
 
-            // Bob mints a token
+            // Bob mints AMOUNT of Oxygen tokens by calling ManicMinter contract
             client
                 .call(&ink_e2e::bob(), mint_message, PRICE * AMOUNT, None)
                 .await
@@ -246,7 +246,7 @@ mod manicminter {
                 .return_value();
             assert_eq!(token_balance, AMOUNT);
 
-            // Check manic-minter contract balance
+            // Check ManicMinter contract balance
             if let Ok(balance) = client.balance(manic_minter_account_id).await {
                 assert_eq!(balance, AMOUNT * PRICE);
             }

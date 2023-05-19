@@ -51,4 +51,4 @@ cargo test --features ink_e2e
 
 
 #### 📚 Learn
-Follow the [From Zero to ink! Hero](https://docs.astar.network/docs/build/wasm/from-zero-to-ink-hero/) tutorial to learn how to build this smart contract
+Follow the [From Zero to ink! Hero](https://docs.astar.network/docs/build/wasm/from-zero-to-ink-hero/) tutorial to learn how to build this smart contract.
