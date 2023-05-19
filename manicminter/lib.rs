@@ -36,7 +36,7 @@ mod manicminter {
     pub trait Minting {
         /// Mint new tokens from Token contract
         #[ink(message, payable)]
-        fn mint(&mut self, amount: Balance) -> Result<()>;
+        fn manic_mint(&mut self, amount: Balance) -> Result<()>;
 
         #[ink(message)]
         fn set_price(&mut self, price: Balance) -> Result<()>;
@@ -58,7 +58,7 @@ mod manicminter {
 
     impl Minting for ManicMinter {
         #[ink(message, payable)]
-        fn mint(&mut self, amount: Balance) -> Result<()> {
+        fn manic_mint(&mut self, amount: Balance) -> Result<()> {
             let caller = self.env().caller();
             ensure!(
                 self.token_contract != AccountId::from([0x0; 32]),
@@ -68,12 +68,13 @@ mod manicminter {
                 self.price == self.env().transferred_value(),
                 Error::InsufficientBalance
             );
+            ink::env::debug_println!("calling manic mint: {:?}", amount);
 
             let _mint_result = build_call::<DefaultEnvironment>()
                 .call(self.token_contract)
                 .gas_limit(5000000000)
                 .exec_input(
-                    ExecutionInput::new(Selector::new(ink::selector_bytes!("PSP34::mint")))
+                    ExecutionInput::new(Selector::new(ink::selector_bytes!("PSP22Mintable::mint")))
                         .push_arg(caller)
                         .push_arg(amount),
                 )
@@ -106,14 +107,14 @@ mod manicminter {
         #[ink::test]
         fn contract_not_set_works() {
             let mut manicminter = ManicMinter::new([0x0; 32].into());
-            assert_eq!(manicminter.mint(50), Err(Error::ContractNotSet));
+            assert_eq!(manicminter.manic_mint(50), Err(Error::ContractNotSet));
         }
 
         /// Test error InsufficientBalance.
         #[ink::test]
         fn insufficient_balance_works() {
             let mut manicminter = ManicMinter::new([0x1; 32].into());
-            assert_eq!(manicminter.mint(50), Err(Error::InsufficientBalance));
+            assert_eq!(manicminter.manic_mint(50), Err(Error::InsufficientBalance));
         }
 
         /// Test setting price
@@ -138,31 +139,30 @@ mod manicminter {
         }
     }
 
-    /// This is how you'd write end-to-end (E2E) or integration tests for ink! contracts.
+    /// ink! end-to-end (E2E) tests
     ///
-    /// When running these you need to make sure that you:
-    /// - Compile the tests with the `e2e-tests` feature flag enabled (`--features e2e-tests`)
-    /// - Are running a Substrate node which contains `pallet-contracts` in the background
+    /// cargo test --features e2e-tests -- --nocapture
+    ///
     #[cfg(all(test, feature = "e2e-tests"))]
     mod e2e_tests {
         use super::*;
         use crate::manicminter::ManicMinterRef;
         use ink::primitives::AccountId;
         use ink_e2e::build_message;
-        // use openbrush::contracts::psp22::psp22_external::PSP22;
         use my_psp22::my_psp22::TokenRef;
         use openbrush::contracts::ownable::ownable_external::Ownable;
+        use openbrush::contracts::psp22::psp22_external::PSP22;
 
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
         const AMOUNT: Balance = 100;
 
-        fn get_alice_account_id() -> AccountId {
-            let alice = ink_e2e::alice::<ink_e2e::PolkadotConfig>();
-            let alice_account_id_32 = alice.account_id();
-            let alice_account_id = AccountId::try_from(alice_account_id_32.as_ref()).unwrap();
+        fn get_bob_account_id() -> AccountId {
+            let bob = ink_e2e::bob::<ink_e2e::PolkadotConfig>();
+            let bob_account_id_32 = bob.account_id();
+            let bob_account_id = AccountId::try_from(bob_account_id_32.as_ref()).unwrap();
 
-            alice_account_id
+            bob_account_id
         }
 
         #[ink_e2e::test(additional_contracts = "manicminter/Cargo.toml token/Cargo.toml")]
@@ -171,7 +171,6 @@ mod manicminter {
 
             // Instantiate Token contract
             let token_constructor = TokenRef::new(initial_balance);
-            let alice_account_id = get_alice_account_id();
 
             let token_account_id = client
                 .instantiate("my_psp22", &ink_e2e::alice(), token_constructor, 0, None)
@@ -219,7 +218,7 @@ mod manicminter {
 
             // Bob mints a token fails since no payment was made
             let mint_message = build_message::<ManicMinterRef>(manic_minter_account_id.clone())
-                .call(|manicminter| manicminter.mint(AMOUNT));
+                .call(|manicminter| manicminter.manic_mint(AMOUNT));
             let failed_mint_result = client
                 .call_dry_run(&ink_e2e::bob(), &mint_message, 0, None)
                 .await
@@ -232,7 +231,17 @@ mod manicminter {
                 .await
                 .expect("calling `pink_mint` failed");
 
-            // Check contract balance
+            // Verify that tokens were minted on Token contract
+            let bob_account_id = get_bob_account_id();
+            let balance_message = build_message::<TokenRef>(token_account_id.clone())
+                .call(|p| p.balance_of(bob_account_id));
+            let token_balance = client
+                .call_dry_run(&ink_e2e::bob(), &balance_message, 0, None)
+                .await
+                .return_value();
+            assert_eq!(token_balance, 100);
+
+            // Check manic-minter contract balance
             if let Ok(balance) = client.balance(manic_minter_account_id).await {
                 assert_eq!(balance, 100);
             }
