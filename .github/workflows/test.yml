@@ -1,0 +1,84 @@
+name: Manic Minter Test
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+env:
+  NODE_JS_VER: 18.x
+  SWANKY_NODE_VER: v1.2.0
+  CONTRACTS_NODE: ./swanky-node
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v3
+
+      - name: Install & display rust toolchain
+        run: |
+          rustup show
+          rustup toolchain install nightly-2023-01-10
+          rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
+          rustup component add clippy --toolchain nightly-x86_64-unknown-linux-gnu
+          rustup show
+
+      - name: Check targets are installed correctly
+        run: rustup target list --installed
+
+      - name: Cargo check
+        run: cargo check
+
+      - name: Check Clippy
+        run: cargo clippy
+
+  format:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use cashed cargo
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo
+          key: ${{ runner.os }}-rust-${{ hashFiles('rust-toolchain.toml') }}
+
+      - name: Checkout the source code
+        uses: actions/checkout@v3
+
+      - name: Format rust code
+        run: cargo fmt --all
+
+  integration:
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout the source code
+      uses: actions/checkout@v3
+
+    - name: Install & display rust toolchain
+      run: |
+        rustup show
+        rustup component add rust-src
+
+    - name: Check targets are installed correctly
+      run: rustup target list --installed
+
+    - name: Install cargo contract
+      if: ${{ steps.check-cargo-contract.outcome == 'failure' }}
+      run: |
+        cargo install cargo-dylint dylint-link
+        cargo install cargo-contract --force --version 2..1.0
+
+    - name: download Swanky-node
+      run: |
+        sudo wget https://github.com/AstarNetwork/swanky-node/releases/download/${{ env.SWANKY_NODE_VER }}/swanky-node-${{ env.SWANKY_NODE_VER }}-ubuntu-x86_64.tar.gz
+        sudo tar -zxvf swanky-node-${{ env.SWANKY_NODE_VER }}-ubuntu-x86_64.tar.gz
+        sudo chmod +x swanky-node
+        ls -la
+
+    - name: e2e test
+      run: cargo test --features e2e-tests

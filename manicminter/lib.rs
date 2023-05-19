@@ -68,13 +68,7 @@ mod manicminter {
                 self.token_contract != AccountId::from([0x0; 32]),
                 Error::ContractNotSet
             );
-            if let Some(value) = (amount as u128).checked_mul(self.price) {
-                let transferred_value = self.env().transferred_value();
-                if transferred_value != value {
-                    return Err(Error::BadMintValue);
-                }
-            }
-            match (amount as u128).checked_mul(self.price) {
+            match amount.checked_mul(self.price) {
                 Some(value) => {
                     let transferred_value = self.env().transferred_value();
                     if transferred_value != value {
