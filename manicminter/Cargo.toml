@@ -13,7 +13,7 @@ scale-info = { version = "2.3", default-features = false, features = ["derive"],
 [dev-dependencies]
 ink_e2e = "4.1.0"
 openbrush = { tag = "3.1.0", git = "https://github.com/727-Ventures/openbrush-contracts", default-features = false, features = ["psp34", "ownable"] }
-my_psp22 = { path = "../token", default-features = false, features = ["ink-as-dependency"] }
+oxygen = { path = "../oxygen", default-features = false, features = ["ink-as-dependency"] }
 
 [lib]
 path = "lib.rs"

@@ -12,9 +12,9 @@ mod manicminter {
     pub struct ManicMinter {
         /// Contract owner
         owner: AccountId,
-        /// Token contract address
+        /// Oxygen contract address
         token_contract: AccountId,
-        /// Minting price. Caller must pay this price to mint one new token from Token contract
+        /// Minting price. Caller must pay this price to mint one new token from Oxygen contract
         price: Balance,
     }
 
@@ -36,7 +36,7 @@ mod manicminter {
 
     #[ink::trait_definition]
     pub trait Minting {
-        /// Mint new tokens from Token contract
+        /// Mint new tokens from Oxygen contract
         #[ink(message, payable)]
         fn manic_mint(&mut self, amount: Balance) -> Result<()>;
 
@@ -158,9 +158,9 @@ mod manicminter {
         use crate::manicminter::ManicMinterRef;
         use ink::primitives::AccountId;
         use ink_e2e::build_message;
-        use my_psp22::my_psp22::TokenRef;
         use openbrush::contracts::ownable::ownable_external::Ownable;
         use openbrush::contracts::psp22::psp22_external::PSP22;
+        use oxygen::oxygen::OxygenRef;
 
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -176,21 +176,21 @@ mod manicminter {
             bob_account_id
         }
 
-        #[ink_e2e::test(additional_contracts = "manicminter/Cargo.toml token/Cargo.toml")]
+        #[ink_e2e::test(additional_contracts = "manicminter/Cargo.toml oxygen/Cargo.toml")]
         async fn e2e_minting_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
             let initial_balance: Balance = 1_000_000;
 
-            // Instantiate Token contract
-            let token_constructor = TokenRef::new(initial_balance);
+            // Instantiate Oxygen contract
+            let token_constructor = OxygenRef::new(initial_balance);
 
-            let token_account_id = client
-                .instantiate("my_psp22", &ink_e2e::alice(), token_constructor, 0, None)
+            let oxygen_account_id = client
+                .instantiate("oxygen", &ink_e2e::alice(), token_constructor, 0, None)
                 .await
                 .expect("token instantiate failed")
                 .account_id;
 
             // Instantiate manic-minter contract
-            let manic_minter_constructor = ManicMinterRef::new(token_account_id);
+            let manic_minter_constructor = ManicMinterRef::new(oxygen_account_id);
             let manic_minter_account_id = client
                 .instantiate(
                     "manic-minter",
@@ -203,16 +203,16 @@ mod manicminter {
                 .expect("manic-minter instantiate failed")
                 .account_id;
 
-            // Set ManicMinter contract to be the owner of Token contract
-            let change_owner = build_message::<TokenRef>(token_account_id.clone())
+            // Set ManicMinter contract to be the owner of Oxygen contract
+            let change_owner = build_message::<OxygenRef>(oxygen_account_id.clone())
                 .call(|p| p.transfer_ownership(manic_minter_account_id));
             client
                 .call(&ink_e2e::alice(), change_owner, 0, None)
                 .await
                 .expect("calling `transfer_ownership` failed");
 
-            // Verify that ManicMinter is the Token contract owner
-            let owner = build_message::<TokenRef>(token_account_id.clone()).call(|p| p.owner());
+            // Verify that ManicMinter is the Oxygen contract owner
+            let owner = build_message::<OxygenRef>(oxygen_account_id.clone()).call(|p| p.owner());
             let owner_result = client
                 .call_dry_run(&ink_e2e::alice(), &owner, 0, None)
                 .await
@@ -242,9 +242,9 @@ mod manicminter {
                 .await
                 .expect("calling `pink_mint` failed");
 
-            // Verify that tokens were minted on Token contract
+            // Verify that tokens were minted on Oxygen contract
             let bob_account_id = get_bob_account_id();
-            let balance_message = build_message::<TokenRef>(token_account_id.clone())
+            let balance_message = build_message::<OxygenRef>(oxygen_account_id.clone())
                 .call(|p| p.balance_of(bob_account_id));
             let token_balance = client
                 .call_dry_run(&ink_e2e::bob(), &balance_message, 0, None)

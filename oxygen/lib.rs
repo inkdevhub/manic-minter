@@ -1,10 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(min_specialization)]
 
-pub use self::my_psp22::TokenRef;
+pub use self::oxygen::OxygenRef;
 
 #[openbrush::contract]
-pub mod my_psp22 {
+pub mod oxygen {
 
     // imports from openbrush
     use openbrush::contracts::ownable::*;
@@ -13,7 +13,7 @@ pub mod my_psp22 {
 
     #[ink(storage)]
     #[derive(Default, Storage)]
-    pub struct Token {
+    pub struct Oxygen {
         #[storage_field]
         psp22: psp22::Data,
         #[storage_field]
@@ -21,9 +21,9 @@ pub mod my_psp22 {
     }
 
     // Section contains default implementation without any modifications
-    impl PSP22 for Token {}
-    impl Ownable for Token {}
-    impl PSP22Mintable for Token {
+    impl PSP22 for Oxygen {}
+    impl Ownable for Oxygen {}
+    impl PSP22Mintable for Oxygen {
         #[ink(message)]
         #[openbrush::modifiers(only_owner)]
         fn mint(&mut self, account: AccountId, amount: Balance) -> Result<(), PSP22Error> {
@@ -31,7 +31,7 @@ pub mod my_psp22 {
         }
     }
 
-    impl Token {
+    impl Oxygen {
         #[ink(constructor)]
         pub fn new(initial_supply: Balance) -> Self {
             let mut _instance = Self::default();

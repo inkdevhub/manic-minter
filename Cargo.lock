@@ -2133,8 +2133,8 @@ version = "0.1.0"
 dependencies = [
  "ink",
  "ink_e2e",
- "my_psp22",
  "openbrush",
+ "oxygen",
  "parity-scale-codec",
  "scale-info",
 ]
@@ -2218,16 +2218,6 @@ dependencies = [
  "log",
  "wasi 0.11.0+wasi-snapshot-preview1",
  "windows-sys 0.45.0",
-]
-
-[[package]]
-name = "my_psp22"
-version = "1.0.0"
-dependencies = [
- "ink",
- "openbrush",
- "parity-scale-codec",
- "scale-info",
 ]
 
 [[package]]
@@ -2446,6 +2436,16 @@ name = "openssl-probe"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
+
+[[package]]
+name = "oxygen"
+version = "1.0.0"
+dependencies = [
+ "ink",
+ "openbrush",
+ "parity-scale-codec",
+ "scale-info",
+]
 
 [[package]]
 name = "pallet-assets-chain-extension"
