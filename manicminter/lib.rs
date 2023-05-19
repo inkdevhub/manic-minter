@@ -23,11 +23,13 @@ mod manicminter {
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum Error {
         /// Returned if not enough balance to fulfill a request is available.
-        InsufficientBalance,
+        BadMintValue,
         /// The call is not allowed if the caller is not the owner of the contract
         NotOwner,
         /// Returned if the token contract account is not set during the contract creation.
         ContractNotSet,
+        /// Returned if multiplication of price and amount overflows
+        OverFlow,
     }
 
     pub type Result<T> = core::result::Result<T, Error>;
@@ -38,9 +40,11 @@ mod manicminter {
         #[ink(message, payable)]
         fn manic_mint(&mut self, amount: Balance) -> Result<()>;
 
+        /// Set minting price for one Oxygen token
         #[ink(message)]
         fn set_price(&mut self, price: Balance) -> Result<()>;
 
+        /// Get minting price for one Oxygen token
         #[ink(message)]
         fn get_price(&self) -> Balance;
     }
@@ -51,7 +55,7 @@ mod manicminter {
             Self {
                 owner: Self::env().caller(),
                 token_contract: contract_acc,
-                price: 1,
+                price: 0,
             }
         }
     }
@@ -64,11 +68,23 @@ mod manicminter {
                 self.token_contract != AccountId::from([0x0; 32]),
                 Error::ContractNotSet
             );
-            ensure!(
-                self.price == self.env().transferred_value(),
-                Error::InsufficientBalance
-            );
-            ink::env::debug_println!("calling manic mint: {:?}", amount);
+            if let Some(value) = (amount as u128).checked_mul(self.price) {
+                let transferred_value = self.env().transferred_value();
+                if transferred_value != value {
+                    return Err(Error::BadMintValue);
+                }
+            }
+            match (amount as u128).checked_mul(self.price) {
+                Some(value) => {
+                    let transferred_value = self.env().transferred_value();
+                    if transferred_value != value {
+                        return Err(Error::BadMintValue);
+                    }
+                }
+                None => {
+                    return Err(Error::OverFlow);
+                }
+            }
 
             let _mint_result = build_call::<DefaultEnvironment>()
                 .call(self.token_contract)
@@ -110,13 +126,6 @@ mod manicminter {
             assert_eq!(manicminter.manic_mint(50), Err(Error::ContractNotSet));
         }
 
-        /// Test error InsufficientBalance.
-        #[ink::test]
-        fn insufficient_balance_works() {
-            let mut manicminter = ManicMinter::new([0x1; 32].into());
-            assert_eq!(manicminter.manic_mint(50), Err(Error::InsufficientBalance));
-        }
-
         /// Test setting price
         #[ink::test]
         fn set_price_works() {
@@ -156,7 +165,9 @@ mod manicminter {
         type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
         const AMOUNT: Balance = 100;
+        const PRICE: Balance = 10;
 
+        /// Helper to get Bob's account_id from `ink_e2e::bob()` PairSigner
         fn get_bob_account_id() -> AccountId {
             let bob = ink_e2e::bob::<ink_e2e::PolkadotConfig>();
             let bob_account_id_32 = bob.account_id();
@@ -210,7 +221,7 @@ mod manicminter {
 
             // Contract owner sets price
             let price_message = build_message::<ManicMinterRef>(manic_minter_account_id.clone())
-                .call(|manicminter| manicminter.set_price(100));
+                .call(|manicminter| manicminter.set_price(PRICE));
             client
                 .call(&ink_e2e::alice(), price_message, 0, None)
                 .await
@@ -223,11 +234,11 @@ mod manicminter {
                 .call_dry_run(&ink_e2e::bob(), &mint_message, 0, None)
                 .await
                 .return_value();
-            assert_eq!(failed_mint_result, Err(Error::InsufficientBalance));
+            assert_eq!(failed_mint_result, Err(Error::BadMintValue));
 
             // Bob mints a token
             client
-                .call(&ink_e2e::bob(), mint_message, 100, None)
+                .call(&ink_e2e::bob(), mint_message, PRICE * AMOUNT, None)
                 .await
                 .expect("calling `pink_mint` failed");
 
@@ -239,11 +250,11 @@ mod manicminter {
                 .call_dry_run(&ink_e2e::bob(), &balance_message, 0, None)
                 .await
                 .return_value();
-            assert_eq!(token_balance, 100);
+            assert_eq!(token_balance, AMOUNT);
 
             // Check manic-minter contract balance
             if let Ok(balance) = client.balance(manic_minter_account_id).await {
-                assert_eq!(balance, 100);
+                assert_eq!(balance, AMOUNT * PRICE);
             }
 
             Ok(())
