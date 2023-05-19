@@ -2,14 +2,14 @@
 #![allow(clippy::new_without_default)]
 
 #[ink::contract]
-mod factory {
+mod manicminter {
     use crate::ensure;
     use ink::env::{
         call::{build_call, ExecutionInput, Selector},
         DefaultEnvironment,
     };
     #[ink(storage)]
-    pub struct Factory {
+    pub struct ManicMinter {
         /// Contract owner
         owner: AccountId,
         /// Token contract address
@@ -18,7 +18,7 @@ mod factory {
         price: Balance,
     }
 
-    /// The Factory error types.
+    /// The ManicMinter error types.
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum Error {
@@ -45,7 +45,7 @@ mod factory {
         fn get_price(&self) -> Balance;
     }
 
-    impl Factory {
+    impl ManicMinter {
         #[ink(constructor)]
         pub fn new(contract_acc: AccountId) -> Self {
             Self {
@@ -56,7 +56,7 @@ mod factory {
         }
     }
 
-    impl Minting for Factory {
+    impl Minting for ManicMinter {
         #[ink(message, payable)]
         fn mint(&mut self, amount: Balance) -> Result<()> {
             let caller = self.env().caller();
@@ -105,28 +105,28 @@ mod factory {
         /// Test error ContractNotSet.
         #[ink::test]
         fn contract_not_set_works() {
-            let mut factory = Factory::new([0x0; 32].into());
-            assert_eq!(factory.mint(50), Err(Error::ContractNotSet));
+            let mut manicminter = ManicMinter::new([0x0; 32].into());
+            assert_eq!(manicminter.mint(50), Err(Error::ContractNotSet));
         }
 
         /// Test error InsufficientBalance.
         #[ink::test]
         fn insufficient_balance_works() {
-            let mut factory = Factory::new([0x1; 32].into());
-            assert_eq!(factory.mint(50), Err(Error::InsufficientBalance));
+            let mut manicminter = ManicMinter::new([0x1; 32].into());
+            assert_eq!(manicminter.mint(50), Err(Error::InsufficientBalance));
         }
 
         /// Test setting price
         #[ink::test]
         fn set_price_works() {
             let accounts = default_accounts();
-            let mut factory = Factory::new([0x0; 32].into());
-            assert!(factory.set_price(100).is_ok());
-            assert_eq!(factory.get_price(), 100);
+            let mut manicminter = ManicMinter::new([0x0; 32].into());
+            assert!(manicminter.set_price(100).is_ok());
+            assert_eq!(manicminter.get_price(), 100);
 
             // Non owner fails to set price
             set_sender(accounts.bob);
-            assert_eq!(factory.set_price(100), Err(Error::NotOwner));
+            assert_eq!(manicminter.set_price(100), Err(Error::NotOwner));
         }
 
         fn default_accounts() -> test::DefaultAccounts<ink::env::DefaultEnvironment> {
@@ -146,7 +146,7 @@ mod factory {
     #[cfg(all(test, feature = "e2e-tests"))]
     mod e2e_tests {
         use super::*;
-        use crate::factory::FactoryRef;
+        use crate::manicminter::ManicMinterRef;
         use ink::primitives::AccountId;
         use ink_e2e::build_message;
         // use openbrush::contracts::psp22::psp22_external::PSP22;
@@ -165,7 +165,7 @@ mod factory {
             alice_account_id
         }
 
-        #[ink_e2e::test(additional_contracts = "factory/Cargo.toml token/Cargo.toml")]
+        #[ink_e2e::test(additional_contracts = "manicminter/Cargo.toml token/Cargo.toml")]
         async fn e2e_minting_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
             let initial_balance: Balance = 1_000_000;
 
@@ -179,41 +179,47 @@ mod factory {
                 .expect("token instantiate failed")
                 .account_id;
 
-            // Instantiate factory contract
-            let factory_constructor = FactoryRef::new(token_account_id);
-            let factory_account_id = client
-                .instantiate("factory", &ink_e2e::alice(), factory_constructor, 0, None)
+            // Instantiate manic-minter contract
+            let manic_minter_constructor = ManicMinterRef::new(token_account_id);
+            let manic_minter_account_id = client
+                .instantiate(
+                    "manic-minter",
+                    &ink_e2e::alice(),
+                    manic_minter_constructor,
+                    0,
+                    None,
+                )
                 .await
-                .expect("factory instantiate failed")
+                .expect("manic-minter instantiate failed")
                 .account_id;
 
-            // Set Factory contract to be the owner of Token contract
+            // Set ManicMinter contract to be the owner of Token contract
             let change_owner = build_message::<TokenRef>(token_account_id.clone())
-                .call(|p| p.transfer_ownership(factory_account_id));
+                .call(|p| p.transfer_ownership(manic_minter_account_id));
             client
                 .call(&ink_e2e::alice(), change_owner, 0, None)
                 .await
                 .expect("calling `transfer_ownership` failed");
 
-            // Verify that Factory is the Token contract owner
+            // Verify that ManicMinter is the Token contract owner
             let owner = build_message::<TokenRef>(token_account_id.clone()).call(|p| p.owner());
             let owner_result = client
                 .call_dry_run(&ink_e2e::alice(), &owner, 0, None)
                 .await
                 .return_value();
-            assert_eq!(owner_result, factory_account_id);
+            assert_eq!(owner_result, manic_minter_account_id);
 
             // Contract owner sets price
-            let price_message = build_message::<FactoryRef>(factory_account_id.clone())
-                .call(|factory| factory.set_price(100));
+            let price_message = build_message::<ManicMinterRef>(manic_minter_account_id.clone())
+                .call(|manicminter| manicminter.set_price(100));
             client
                 .call(&ink_e2e::alice(), price_message, 0, None)
                 .await
                 .expect("calling `set_price` failed");
 
             // Bob mints a token fails since no payment was made
-            let mint_message = build_message::<FactoryRef>(factory_account_id.clone())
-                .call(|factory| factory.mint(AMOUNT));
+            let mint_message = build_message::<ManicMinterRef>(manic_minter_account_id.clone())
+                .call(|manicminter| manicminter.mint(AMOUNT));
             let failed_mint_result = client
                 .call_dry_run(&ink_e2e::bob(), &mint_message, 0, None)
                 .await
@@ -227,7 +233,7 @@ mod factory {
                 .expect("calling `pink_mint` failed");
 
             // Check contract balance
-            if let Ok(balance) = client.balance(factory_account_id).await {
+            if let Ok(balance) = client.balance(manic_minter_account_id).await {
                 assert_eq!(balance, 100);
             }
 
