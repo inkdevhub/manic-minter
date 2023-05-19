@@ -12,6 +12,7 @@ env:
   SWANKY_NODE_VER: v1.2.0
   CONTRACTS_NODE: ./swanky-node
   NIGHTLY_VER: nightly-2023-01-10
+  CARGO_CONTRACT_VER: 2.1.0
 jobs:
   install:
     runs-on: ubuntu-latest
@@ -73,7 +74,7 @@ jobs:
       - name: Install cargo contract
         run: |
           cargo install cargo-dylint dylint-link
-          cargo install cargo-contract --force --version 2..1.0
+          cargo install cargo-contract --force --version ${{ env.CARGO_CONTRACT_VER }}
 
       - name: download Swanky-node
         run: |
