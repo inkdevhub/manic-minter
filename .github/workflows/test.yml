@@ -22,7 +22,6 @@ jobs:
 
       - name: Install & display rust toolchain
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
           rustup show
           rustup toolchain install ${{ env.NIGHTLY_VER }}
           rustup component add rust-src --toolchain ${{ env.NIGHTLY_VER }}-x86_64-unknown-linux-gnu
