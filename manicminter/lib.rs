@@ -24,12 +24,14 @@ mod manicminter {
     pub enum Error {
         /// Returned if not enough balance to fulfill a request is available.
         BadMintValue,
-        /// The call is not allowed if the caller is not the owner of the contract
-        NotOwner,
         /// Returned if the token contract account is not set during the contract creation.
         ContractNotSet,
+        /// The call is not allowed if the caller is not the owner of the contract
+        NotOwner,
         /// Returned if multiplication of price and amount overflows
         OverFlow,
+        /// Returned if the cross contract transaction failed
+        TransactionFailed,
     }
 
     pub type Result<T> = core::result::Result<T, Error>;
@@ -80,7 +82,7 @@ mod manicminter {
                 }
             }
 
-            let _mint_result = build_call::<DefaultEnvironment>()
+            let mint_result = build_call::<DefaultEnvironment>()
                 .call(self.token_contract)
                 .gas_limit(5000000000)
                 .exec_input(
@@ -90,8 +92,12 @@ mod manicminter {
                 )
                 .returns::<()>()
                 .try_invoke();
-            ink::env::debug_println!("mint_result: {:?}", _mint_result);
-            Ok(())
+
+            // ink::env::debug_println!("mint_result: {:?}", mint_result);
+            match mint_result {
+                Ok(Ok(_)) => Ok(()),
+                _ => Err(Error::TransactionFailed),
+            }
         }
 
         #[ink(message)]
@@ -230,11 +236,19 @@ mod manicminter {
                 .return_value();
             assert_eq!(failed_mint_result, Err(Error::BadMintValue));
 
+            // Bob mints failed since not enough is paid
+            // client
+            // .call(&ink_e2e::bob(), mint_message, PRICE, None)
+            // .await
+            // .expect("calling `manic_mint` failed");
+            // let mint_message = build_message::<ManicMinterRef>(manic_minter_account_id.clone())
+            //     .call(|manicminter| manicminter.manic_mint(AMOUNT));
+
             // Bob mints AMOUNT of Oxygen tokens by calling ManicMinter contract
             client
                 .call(&ink_e2e::bob(), mint_message, PRICE * AMOUNT, None)
                 .await
-                .expect("calling `pink_mint` failed");
+                .expect("calling `manic_mint` failed");
 
             // Verify that tokens were minted on Oxygen contract
             let bob_account_id = get_bob_account_id();
