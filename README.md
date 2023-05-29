@@ -46,7 +46,7 @@ First start your local node. Recommended [swanky-node](https://github.com/AstarN
 Define environment variable CONTRAC_NODE to point to the path where you have installation of [swanky-node](https://github.com/AstarNetwork/swanky-node) or where you have any other node which supports pallet-contract
 And then:
 ```sh
-cargo test --features ink_e2e
+cargo test --features e2e-tests
 ```
 
 
