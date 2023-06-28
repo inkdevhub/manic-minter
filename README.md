@@ -43,9 +43,10 @@ First start your local node. Recommended [swanky-node](https://github.com/AstarN
 - or deploy with polkadot.JS. Instructions on [Astar docs](https://docs.astar.network/docs/wasm/sc-dev/polkadotjs-ui)
 
 ##### 💫 Run integration test
-Define environment variable CONTRAC_NODE to point to the path where you have installation of [swanky-node](https://github.com/AstarNetwork/swanky-node) or where you have any other node which supports pallet-contract
+Define environment variable CONTRACTS_NODE to point to the path where you have installation of [swanky-node](https://github.com/AstarNetwork/swanky-node) or where you have any other node which supports pallet-contract
 And then:
 ```sh
+export CONTRACTS_NODE="$HOME/Desktop/swanky-node/target/release/swanky-node"
 cargo test --features e2e-tests
 ```
 
